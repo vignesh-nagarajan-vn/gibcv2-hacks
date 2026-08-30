@@ -38,6 +38,10 @@ from engine.config import BENCHMARK, DATA_DIR, PRICES_DIR
 
 START = date(2005, 1, 1)
 
+# French history reaches back to 1926. Only the window that overlaps the price
+# panel is kept, which trims about 1.9 MB of unused rows out of the repo.
+FRENCH_START = "2004-07-01"
+
 UNIVERSE = [
     "AAPL", "ABT", "ADBE", "AMGN", "AXP", "BA", "BAC", "BMY", "C", "CAT",
     "COST", "CSCO", "CVX", "DE", "DIS", "DUK", "GILD", "GS", "HD", "HON",
@@ -144,6 +148,8 @@ def fetch_french(name: str, url: str, out_dir: Path) -> tuple[int, str, str]:
         if len(parts) != len(cols) or len(parts[0]) != 8 or not parts[0].isdigit():
             continue
         iso = f"{parts[0][:4]}-{parts[0][4:6]}-{parts[0][6:]}"
+        if iso < FRENCH_START:
+            continue
         vals = [f"{float(p) / 100.0:.8f}" for p in parts[1:]]
         out_rows.append([iso] + vals)
 
