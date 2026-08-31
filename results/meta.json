@@ -81,7 +81,24 @@
    "ma_cross",
    "vol_momentum"
   ],
-  "sweep_seconds": 345.1
+  "sweep_seconds": 358.0
+ },
+ "windows": {
+  "headline": "2y",
+  "labels": [
+   "2y",
+   "3y",
+   "5y",
+   "10y",
+   "full"
+  ],
+  "days": [
+   504,
+   756,
+   1260,
+   2520,
+   5448
+  ]
  },
  "cost_model": {
   "grid_bps": [
