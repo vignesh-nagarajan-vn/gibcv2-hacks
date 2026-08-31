@@ -383,7 +383,7 @@ def build_weights(spec: StrategySpec, features: FeatureCache) -> np.ndarray:
     # mask is part of that same restriction: a strategy that only trades fifteen
     # names must be neutral within those fifteen, not against the other thirty
     # four it never touches.
-    active = features.tradable & features.subset_mask(int(params.get("subset", 0)))[None, :]
+    active = features.tradable & subset[None, :]
     return _normalize(_neutralize(np.where(active, lagged, 0.0), active))
 
 
