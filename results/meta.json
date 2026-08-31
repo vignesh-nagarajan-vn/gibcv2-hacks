@@ -1,0 +1,104 @@
+{
+ "engine_version": "0.1.0",
+ "generated_on": "2026-08-30",
+ "seed": 20260830,
+ "annualization": 252,
+ "data": {
+  "n_tickers": 49,
+  "n_days": 5448,
+  "start": "2005-01-03",
+  "end": "2026-08-28",
+  "missing_return_fraction": 0.000184
+ },
+ "benchmark": {
+  "ticker": "SPY",
+  "performance": {
+   "sharpe": 0.645003,
+   "annualized_return": 0.109651,
+   "annualized_vol": 0.189078,
+   "skew": -0.002225,
+   "excess_kurtosis": 15.38799,
+   "max_drawdown": 0.551894,
+   "annualized_turnover": 0.0,
+   "n_days": 5447
+  }
+ },
+ "universe": [
+  "AAPL",
+  "ABT",
+  "ADBE",
+  "AMGN",
+  "AXP",
+  "BA",
+  "BAC",
+  "BMY",
+  "C",
+  "CAT",
+  "COST",
+  "CSCO",
+  "CVX",
+  "DE",
+  "DIS",
+  "DUK",
+  "GILD",
+  "GS",
+  "HD",
+  "HON",
+  "IBM",
+  "INTC",
+  "JNJ",
+  "JPM",
+  "KO",
+  "LMT",
+  "LOW",
+  "MCD",
+  "MDT",
+  "MMM",
+  "MRK",
+  "MSFT",
+  "NKE",
+  "ORCL",
+  "PEP",
+  "PFE",
+  "PG",
+  "QCOM",
+  "SBUX",
+  "SO",
+  "T",
+  "TGT",
+  "TXN",
+  "UNH",
+  "UPS",
+  "VZ",
+  "WFC",
+  "WMT",
+  "XOM"
+ ],
+ "search": {
+  "n_trials": 3456,
+  "families": [
+   "breakout",
+   "ma_cross",
+   "vol_momentum"
+  ],
+  "sweep_seconds": 345.1
+ },
+ "cost_model": {
+  "grid_bps": [
+   0.0,
+   5.0,
+   10.0,
+   25.0
+  ],
+  "aum_usd": 50000000.0,
+  "impact_bps_per_unit_participation": 1000.0,
+  "max_participation": 0.02
+ },
+ "validation": {
+  "cscv_blocks": 16,
+  "cpcv_groups": 8,
+  "cpcv_test_groups": 2,
+  "cpcv_embargo_days": 10,
+  "published_factor_trials": 316
+ }
+}
