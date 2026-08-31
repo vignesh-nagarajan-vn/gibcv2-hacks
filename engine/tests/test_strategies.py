@@ -6,10 +6,13 @@ import pytest
 
 from engine.data import to_returns
 from engine.strategies import (
+    SUBSET_COUNT,
+    SUBSET_SIZE,
     FeatureCache,
     StrategySpec,
     build_weights,
     enumerate_specs,
+    universe_subsets,
 )
 
 
@@ -213,3 +216,82 @@ def test_top_k_limits_the_number_of_held_names():
     # names the book is long relative to the others rather than on how many it
     # touches at all.
     assert overweight.max() <= 2
+
+
+def test_subsets_are_deterministic_and_sized_as_declared():
+    a = universe_subsets(49, seed=5)
+    b = universe_subsets(49, seed=5)
+    c = universe_subsets(49, seed=6)
+
+    assert len(a) == SUBSET_COUNT
+    assert a[0].all(), "subset zero is the whole universe"
+    assert all(m.sum() == SUBSET_SIZE for m in a[1:])
+    assert all(np.array_equal(x, y) for x, y in zip(a, b))
+    assert not all(np.array_equal(x, y) for x, y in zip(a, c))
+
+
+def test_a_subset_strategy_touches_only_its_own_names():
+    features = _features(n_names=20)
+    masks = universe_subsets(20, seed=0)
+    features.subset_seed = 0
+
+    spec = StrategySpec(
+        "vol_momentum",
+        (
+            ("lookback", 63),
+            ("skip", 0),
+            ("vol_window", 21),
+            ("top_k", 3),
+            ("short", True),
+            ("rebalance", 1),
+            ("subset", 3),
+        ),
+    )
+    weights = build_weights(spec, features)
+    excluded = ~masks[3]
+
+    assert np.abs(weights[:, excluded]).max() == 0.0
+    assert np.abs(weights[:, masks[3]]).max() > 0.0
+
+
+def test_a_subset_strategy_is_neutral_within_its_subset():
+    """Neutrality is against the names it trades, not against the ones it ignores."""
+    features = _features(n_names=20)
+    features.subset_seed = 0
+
+    for subset in (0, 2, 7):
+        spec = StrategySpec(
+            "ma_cross",
+            (
+                ("fast", 10),
+                ("slow", 60),
+                ("short", True),
+                ("rebalance", 1),
+                ("subset", subset),
+            ),
+        )
+        weights = build_weights(spec, features)
+        assert np.abs(weights.sum(axis=1)).max() < 1e-12
+
+
+def test_subsets_produce_genuinely_different_series():
+    """The point of the dimension. Same rule, different names, different result."""
+    features = _features(n_names=25, seed=3)
+    features.subset_seed = 1
+
+    def series(subset):
+        spec = StrategySpec(
+            "ma_cross",
+            (
+                ("fast", 10),
+                ("slow", 60),
+                ("short", True),
+                ("rebalance", 1),
+                ("subset", subset),
+            ),
+        )
+        w = build_weights(spec, features)
+        return (w * np.nan_to_num(features.returns.to_numpy())).sum(axis=1)
+
+    a, b = series(1), series(2)
+    assert np.corrcoef(a, b)[0, 1] < 0.95

@@ -31,21 +31,36 @@ import pandas as pd
 
 from engine.data import Panel
 
-# Grids. Widened until the enumeration reaches a few thousand trials, which is a
-# realistic size for an afternoon of parameter tweaking by one person.
-MA_FAST = (5, 10, 15, 20, 30, 40, 50)
-MA_SLOW = (60, 80, 100, 120, 150, 200, 250)
+# Grids, sized so the enumeration reaches a few thousand trials. That is a
+# realistic afternoon of parameter tweaking for one person.
+MA_FAST = (5, 10, 20, 50)
+MA_SLOW = (60, 120, 250)
 
-BREAKOUT_ENTRY = (20, 30, 40, 60, 80, 100, 120, 150)
-BREAKOUT_EXIT = (10, 15, 20, 30, 40, 50)
+BREAKOUT_ENTRY = (20, 40, 80, 150)
+BREAKOUT_EXIT = (10, 20, 50)
 
-MOM_LOOKBACK = (21, 42, 63, 126, 189, 252)
-MOM_SKIP = (0, 5, 21)
-MOM_VOL_WINDOW = (21, 63, 126)
-MOM_TOP_K = (5, 10, 15, 25, 0)  # 0 means every name in the universe
+MOM_LOOKBACK = (21, 63, 126, 252)
+MOM_SKIP = (0, 21)
+MOM_VOL_WINDOW = (21, 63)
+MOM_TOP_K = (3, 5, 0)  # 0 means every name in the traded subset
 
-REBALANCE = (1, 5, 10)
+REBALANCE = (1, 5)
 DIRECTIONS = (False, True)  # long/flat, then long/short
+
+# The search also ranges over which names to trade. This dimension is here for
+# realism rather than for decoration. A practitioner tuning a rule does not hold
+# the universe fixed; they try it on tech, then on the banks, then on whichever
+# fifteen names looked cooperative. Leaving the universe out of the grid would
+# understate the size of the search and, worse, would make the family almost
+# perfectly redundant. An earlier version of this file did exactly that, and the
+# correlation matrix reported an effective trial count of 3.9 out of 2202: two
+# thousand rules that were really about four bets.
+#
+# Subset 0 is the full universe. The rest are fixed pseudo-random draws, so the
+# grid is deterministic given the seed and no subset was chosen by looking at
+# what it returned.
+SUBSET_COUNT = 12
+SUBSET_SIZE = 15
 
 
 @dataclass(frozen=True)
@@ -62,6 +77,26 @@ class StrategySpec:
         return {"family": self.family, **dict(self.params)}
 
 
+def universe_subsets(
+    n_names: int, seed: int, count: int = SUBSET_COUNT, size: int = SUBSET_SIZE
+) -> list[np.ndarray]:
+    """Boolean masks over the universe, one per subset id.
+
+    Subset 0 is everything. The rest are fixed draws without replacement, taken
+    from the seed alone and never from the returns, so no subset earned its place
+    in the grid by performing well.
+    """
+    rng = np.random.default_rng(seed + 977)
+    masks = [np.ones(n_names, dtype=bool)]
+    draw = min(size, n_names)
+
+    for _ in range(count - 1):
+        mask = np.zeros(n_names, dtype=bool)
+        mask[rng.choice(n_names, draw, replace=False)] = True
+        masks.append(mask)
+    return masks
+
+
 def enumerate_specs(seed: int) -> list[StrategySpec]:
     """The full grid, in a fixed order determined by the seed.
 
@@ -70,52 +105,61 @@ def enumerate_specs(seed: int) -> list[StrategySpec]:
     """
     specs: list[StrategySpec] = []
 
-    for fast in MA_FAST:
-        for slow in MA_SLOW:
-            for short in DIRECTIONS:
-                for reb in REBALANCE:
-                    specs.append(
-                        StrategySpec(
-                            "ma_cross",
-                            (("fast", fast), ("slow", slow), ("short", short), ("rebalance", reb)),
-                        )
-                    )
-
-    for entry in BREAKOUT_ENTRY:
-        for exit_window in BREAKOUT_EXIT:
-            for short in DIRECTIONS:
-                for reb in REBALANCE:
-                    specs.append(
-                        StrategySpec(
-                            "breakout",
-                            (
-                                ("entry", entry),
-                                ("exit", exit_window),
-                                ("short", short),
-                                ("rebalance", reb),
-                            ),
-                        )
-                    )
-
-    for look in MOM_LOOKBACK:
-        for skip in MOM_SKIP:
-            for vol_w in MOM_VOL_WINDOW:
-                for k in MOM_TOP_K:
-                    for short in DIRECTIONS:
-                        for reb in REBALANCE:
-                            specs.append(
-                                StrategySpec(
-                                    "vol_momentum",
-                                    (
-                                        ("lookback", look),
-                                        ("skip", skip),
-                                        ("vol_window", vol_w),
-                                        ("top_k", k),
-                                        ("short", short),
-                                        ("rebalance", reb),
-                                    ),
-                                )
+    for subset in range(SUBSET_COUNT):
+        for fast in MA_FAST:
+            for slow in MA_SLOW:
+                for short in DIRECTIONS:
+                    for reb in REBALANCE:
+                        specs.append(
+                            StrategySpec(
+                                "ma_cross",
+                                (
+                                    ("fast", fast),
+                                    ("slow", slow),
+                                    ("short", short),
+                                    ("rebalance", reb),
+                                    ("subset", subset),
+                                ),
                             )
+                        )
+
+        for entry in BREAKOUT_ENTRY:
+            for exit_window in BREAKOUT_EXIT:
+                for short in DIRECTIONS:
+                    for reb in REBALANCE:
+                        specs.append(
+                            StrategySpec(
+                                "breakout",
+                                (
+                                    ("entry", entry),
+                                    ("exit", exit_window),
+                                    ("short", short),
+                                    ("rebalance", reb),
+                                    ("subset", subset),
+                                ),
+                            )
+                        )
+
+        for look in MOM_LOOKBACK:
+            for skip in MOM_SKIP:
+                for vol_w in MOM_VOL_WINDOW:
+                    for k in MOM_TOP_K:
+                        for short in DIRECTIONS:
+                            for reb in REBALANCE:
+                                specs.append(
+                                    StrategySpec(
+                                        "vol_momentum",
+                                        (
+                                            ("lookback", look),
+                                            ("skip", skip),
+                                            ("vol_window", vol_w),
+                                            ("top_k", k),
+                                            ("short", short),
+                                            ("rebalance", reb),
+                                            ("subset", subset),
+                                        ),
+                                    )
+                                )
 
     rng = np.random.default_rng(seed)
     order = rng.permutation(len(specs))
@@ -128,6 +172,8 @@ class FeatureCache:
 
     prices: pd.DataFrame
     returns: pd.DataFrame
+    subset_seed: int = 0
+    _subsets: object = None
     _sma: dict = field(default_factory=dict)
     _rmax: dict = field(default_factory=dict)
     _rmin: dict = field(default_factory=dict)
@@ -136,8 +182,14 @@ class FeatureCache:
     _tradable: object = None
 
     @classmethod
-    def from_panel(cls, panel: Panel) -> "FeatureCache":
-        return cls(prices=panel.adj_close, returns=panel.returns)
+    def from_panel(cls, panel: Panel, subset_seed: int = 0) -> "FeatureCache":
+        return cls(prices=panel.adj_close, returns=panel.returns, subset_seed=subset_seed)
+
+    def subset_mask(self, subset_id: int) -> np.ndarray:
+        """Which names the given subset id is allowed to trade."""
+        if self._subsets is None:
+            self._subsets = universe_subsets(self.prices.shape[1], self.subset_seed)
+        return self._subsets[subset_id % len(self._subsets)]
 
     @property
     def shape(self) -> tuple:
@@ -279,10 +331,15 @@ def _cross_sectional_positions(score: np.ndarray, top_k: int, short: bool) -> np
     return np.where(n_valid >= (2 * k if short else k), raw, 0.0)
 
 
+def _mom_key(params: dict) -> tuple[int, int]:
+    return int(params["lookback"]), int(params["skip"])
+
+
 def build_weights(spec: StrategySpec, features: FeatureCache) -> np.ndarray:
     """Turn one spec into a [days, names] weight matrix, already lagged one day."""
     params = dict(spec.params)
     prices = features.prices.to_numpy()
+    subset = features.subset_mask(int(params.get("subset", 0)))
 
     if spec.family == "ma_cross":
         fast = features.sma(int(params["fast"]))
@@ -298,7 +355,10 @@ def build_weights(spec: StrategySpec, features: FeatureCache) -> np.ndarray:
         raw = np.where(np.isnan(upper) | np.isnan(lower), 0.0, raw)
 
     elif spec.family == "vol_momentum":
-        score = features.momentum(int(params["lookback"]), int(params["skip"]))
+        # Ranking has to happen inside the subset. A strategy that trades fifteen
+        # names ranks those fifteen against each other, not against the whole
+        # universe and then discards the winners it is not allowed to hold.
+        score = np.where(subset[None, :], features.momentum(*_mom_key(params)), np.nan)
         vol = features.vol(int(params["vol_window"]))
         sides = _cross_sectional_positions(score, int(params["top_k"]), bool(params["short"]))
         with np.errstate(divide="ignore", invalid="ignore"):
@@ -319,8 +379,11 @@ def build_weights(spec: StrategySpec, features: FeatureCache) -> np.ndarray:
 
     # Order matters below. Masking to the tradable set has to happen before the
     # demeaning, and the demeaning before the scaling, or a name dropping out
-    # between rebalances leaves the book with residual net exposure.
-    active = features.tradable
+    # between rebalances leaves the book with residual net exposure. The subset
+    # mask is part of that same restriction: a strategy that only trades fifteen
+    # names must be neutral within those fifteen, not against the other thirty
+    # four it never touches.
+    active = features.tradable & features.subset_mask(int(params.get("subset", 0)))[None, :]
     return _normalize(_neutralize(np.where(active, lagged, 0.0), active))
 
 

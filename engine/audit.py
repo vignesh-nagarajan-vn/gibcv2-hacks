@@ -2,14 +2,14 @@
 
 Three things get audited, through as much shared machinery as each admits.
 
-The mirage. Two thousand two hundred parameter variants of three simple rule
-families, swept over the price panel, with the single best-looking one pulled out
-and presented the way a naive backtest would present it. Then the same series is
-put through deflation and through CSCV.
+The mirage. A few thousand parameter variants of three simple rule families,
+swept over the price panel, with the single best-looking one pulled out and
+presented the way a naive backtest would present it. Then the same series is put
+through deflation and through CSCV.
 
 Our own momentum. The 12-1 cross-sectional specification from the literature,
 fixed in advance, run through the identical code path as the grid: same loader,
-same weight builder, same cost model, same statistics. One trial, not two
+same weight builder, same cost model, same statistics. One trial, not a few
 thousand.
 
 The published factor. The Kenneth French momentum series over its full history
@@ -175,7 +175,7 @@ def run_sweep(panel: Panel, specs: list[StrategySpec], model: CostModel) -> Swee
     and capacity are not affected by it, so every point on the cost grid is
     recoverable exactly from what is kept here.
     """
-    features = FeatureCache.from_panel(panel)
+    features = FeatureCache.from_panel(panel, subset_seed=SEED)
     returns = np.nan_to_num(panel.returns.to_numpy())
     adv = average_dollar_volume(panel.dollar_volume)
 
@@ -212,6 +212,19 @@ def run_sweep(panel: Panel, specs: list[StrategySpec], model: CostModel) -> Swee
     )
 
 
+def _live_columns(net: np.ndarray, turnover: np.ndarray, min_annual_turnover: float = 0.1):
+    """Strategies that actually hold positions and actually trade them.
+
+    Two ways to be degenerate. A rule whose signal conditions are never met sits
+    flat forever, and a rule that reaches a position and then never revisits it
+    has no turnover to charge. Neither is a trading strategy, and leaving them in
+    corrupts both the winner and the dispersion the deflation benchmark uses.
+    """
+    has_variance = net.std(axis=0) > 1e-12
+    trades = turnover.astype(float).mean(axis=0) * ANNUALIZATION > min_annual_turnover
+    return has_variance & trades
+
+
 def net_matrix(sweep: Sweep, round_trip_bps: float) -> np.ndarray:
     """Every strategy's net return series at one point on the cost grid."""
     spread = sweep.turnover.astype(float) * (round_trip_bps / 2.0) * 1e-4
@@ -223,8 +236,21 @@ def audit_sweep_at_cost(sweep: Sweep, round_trip_bps: float, n_blocks: int = CSC
     net = net_matrix(sweep, round_trip_bps)
     family_sharpe = np.asarray(sharpe(net))
 
-    winner = int(np.argmax(family_sharpe))
-    winner_net = net[:, winner]
+    # A strategy that never takes a position has zero volatility and therefore a
+    # Sharpe of zero by the convention in metrics.py. Once costs bite, zero beats
+    # every strategy that actually trades, and the search happily crowns a rule
+    # that does nothing. That is not a mirage, it is an artifact, so degenerate
+    # columns are excluded from selection and from the family statistics.
+    live = _live_columns(net, sweep.turnover)
+    if not live.any():
+        raise RuntimeError("every strategy in the family is degenerate")
+
+    net = net[:, live]
+    family_sharpe = family_sharpe[live]
+    live_index = np.flatnonzero(live)
+
+    winner = int(live_index[int(np.argmax(family_sharpe))])
+    winner_net = net_matrix(sweep, round_trip_bps)[:, winner]
     performance = summarize(winner_net, sweep.turnover[:, winner].astype(float))
 
     effective = effective_trials(net)
@@ -233,7 +259,7 @@ def audit_sweep_at_cost(sweep: Sweep, round_trip_bps: float, n_blocks: int = CSC
         n_obs=performance.n_days,
         skew=performance.skew,
         excess_kurtosis=performance.excess_kurtosis,
-        n_trials=len(sweep.specs),
+        n_trials=int(live.sum()),
         sharpe_variance=float(np.var(family_sharpe)),
         effective_n_trials=effective,
     )
@@ -245,7 +271,7 @@ def audit_sweep_at_cost(sweep: Sweep, round_trip_bps: float, n_blocks: int = CSC
         deflated_sharpe=deflated.deflated_sharpe,
         pbo=pbo_result.pbo,
         observed_sharpe=performance.sharpe,
-        n_trials=len(sweep.specs),
+        n_trials=int(live.sum()),
         benchmark_sharpe=deflated.benchmark_sharpe,
         minimum_track_record_years=deflated_payload["minimum_track_record_years"],
     )
@@ -255,6 +281,8 @@ def audit_sweep_at_cost(sweep: Sweep, round_trip_bps: float, n_blocks: int = CSC
 
     return {
         "round_trip_bps": float(round_trip_bps),
+        "n_live_strategies": int(live.sum()),
+        "n_degenerate_strategies": int((~live).sum()),
         "winner": {
             "index": winner,
             "name": sweep.specs[winner].name,
