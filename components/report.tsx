@@ -112,7 +112,16 @@ export function Report() {
           <div className="lg:col-span-2">
             <Figure
               label="Growth of one dollar, log scale"
-              caption={`The winning rule against ${meta.benchmark.ticker} over the same window. Log scale, because a linear axis hides everything that happens early in a curve.`}
+              caption={
+                <>
+                  The winning rule against {meta.benchmark.ticker} over the same window, both
+                  rebased to 1.0 at the start. Log scale, because a linear axis hides everything
+                  that happens early in a curve. The book is dollar neutral, so it is not trying
+                  to beat the index on total return and the comparison to make is on the risk
+                  taken: {fmt.pct(perf.annualized_vol)} volatility and a{" "}
+                  {fmt.pct(perf.max_drawdown)} worst drawdown.
+                </>
+              }
             >
               <EquityCurve series={m.equity_curve} />
             </Figure>
@@ -157,10 +166,19 @@ export function Report() {
               bias is computable rather than a matter of opinion.
             </p>
             <p className="mt-4">
-              Two statistics do the work. The deflated Sharpe ratio asks whether the result beats
-              what the luckiest of {fmt.int(a.deflated.n_trials)} no-skill trials would have
-              posted. The probability of backtest overfitting asks a different question: across
-              every symmetric split of the sample, does the in-sample winner keep winning.
+              Two statistics do the work, and they catch different things. The deflated Sharpe
+              ratio asks whether the result beats what the luckiest of{" "}
+              {fmt.int(a.deflated.n_trials)} no-skill trials would have posted. The probability of
+              backtest overfitting asks whether the in-sample winner keeps winning across every
+              symmetric split of the sample.
+            </p>
+            <p className="mt-4">
+              At this window the search does clear the deflation bar, so the deflated Sharpe comes
+              back middling rather than damning, and PBO is what condemns the result. Scroll to
+              the track record chart and the roles reverse: over the full sample the achievable
+              edge collapses while the bar stays up, and the deflated Sharpe falls to a fraction of
+              one percent. A tool reporting only one of the two would have passed one of these
+              cases.
             </p>
           </>
         }
@@ -179,14 +197,14 @@ export function Report() {
           <Stat
             label="Deflated Sharpe"
             value={fmt.pct(a.deflated.deflated_sharpe)}
-            tone={a.deflated.deflated_sharpe < 0.5 ? "bad" : "good"}
-            note="probability the edge is real"
+            tone={a.deflated.deflated_sharpe < 0.95 ? "bad" : "good"}
+            note="needs to be near certain, not merely above half"
           />
           <Stat
             label="PBO"
             value={fmt.pct(a.pbo.pbo)}
             tone={a.pbo.pbo > 0.5 ? "bad" : "good"}
-            note={`over ${fmt.int(a.pbo.n_partitions)} splits`}
+            note={`over ${fmt.int(a.pbo.n_partitions)} splits. 50% is the null`}
           />
         </StatRow>
 
