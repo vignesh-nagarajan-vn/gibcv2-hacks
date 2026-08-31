@@ -354,8 +354,8 @@ export function Report() {
                 One trial, not {fmt.int(meta.search.n_trials)}. It correlates{" "}
                 {fmt.n(control.own.corroboration.correlation)} with the published momentum factor
                 over {fmt.int(control.own.corroboration.n_overlap_days)} overlapping days, so it
-                is measuring the documented effect. It still earns a Sharpe of{" "}
-                {fmt.n(own.performance.sharpe)}.
+                is measuring the documented effect rather than something else wearing its name.
+                Over this window it earns a Sharpe of {fmt.n(own.performance.sharpe)}.
               </>
             }
           >
