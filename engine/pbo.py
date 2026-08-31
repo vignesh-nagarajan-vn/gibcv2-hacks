@@ -114,7 +114,7 @@ def block_moments(returns: np.ndarray, n_blocks: int) -> tuple[int, np.ndarray, 
     the right end to trim because the earliest rows are where the longest
     lookbacks are still warming up and every strategy sits flat.
     """
-    matrix = np.asarray(returns, dtype=float)
+    matrix = np.asarray(returns)
     if matrix.ndim != 2:
         raise ValueError("returns must be a [days, strategies] matrix")
     if n_blocks < 2 or n_blocks % 2 != 0:
@@ -129,7 +129,13 @@ def block_moments(returns: np.ndarray, n_blocks: int) -> tuple[int, np.ndarray, 
     trimmed = matrix[n_days - usable :]
     reshaped = trimmed.reshape(n_blocks, per_block, matrix.shape[1])
 
-    return per_block, reshaped.sum(axis=1), (reshaped**2).sum(axis=1)
+    # Accumulated in float64 even when the panel is single precision, since
+    # these sums feed every Sharpe the method computes.
+    return (
+        per_block,
+        reshaped.sum(axis=1, dtype=np.float64),
+        np.square(reshaped, dtype=np.float64).sum(axis=1),
+    )
 
 
 def _sharpe_from_sums(
@@ -153,7 +159,7 @@ def cscv(
 
     `returns` is [days, strategies]. Every column is one trial in the search.
     """
-    matrix = np.asarray(returns, dtype=float)
+    matrix = np.asarray(returns)
     n_strategies = matrix.shape[1]
     if n_strategies < 2:
         raise ValueError("PBO needs at least two strategies to rank")

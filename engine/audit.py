@@ -154,12 +154,21 @@ def form_verdict(
 
 @dataclass
 class Sweep:
-    """Raw output of running the whole grid once. Held in memory, never written."""
+    """Raw output of running the whole grid once. Held in memory, never written.
+
+    Two matrices rather than three, both single precision. `before_spread` is the
+    gross return already net of slippage, which is the part of the cost that does
+    not move with the round-trip level. Everything the cost grid changes is a
+    linear function of `turnover`, so the pair reconstructs any level exactly.
+
+    Single precision is a memory decision, not an accuracy one. At three thousand
+    strategies over five thousand days each matrix is 75 MB, and every statistic
+    computed from them accumulates in float64 regardless.
+    """
 
     specs: list[StrategySpec]
-    gross: np.ndarray
+    before_spread: np.ndarray
     turnover: np.ndarray
-    slippage: np.ndarray
     peak_participation: np.ndarray
     capacity_binding_days: np.ndarray
     capacity_ceiling: np.ndarray
@@ -180,9 +189,8 @@ def run_sweep(panel: Panel, specs: list[StrategySpec], model: CostModel) -> Swee
     adv = average_dollar_volume(panel.dollar_volume)
 
     n_days, n_specs = returns.shape[0], len(specs)
-    gross = np.empty((n_days, n_specs))
+    before_spread = np.empty((n_days, n_specs), dtype=np.float32)
     turnover = np.empty((n_days, n_specs), dtype=np.float32)
-    slippage = np.empty((n_days, n_specs), dtype=np.float32)
     peak = np.empty(n_specs)
     binding = np.empty(n_specs, dtype=np.int32)
     ceiling = np.empty(n_specs)
@@ -190,20 +198,19 @@ def run_sweep(panel: Panel, specs: list[StrategySpec], model: CostModel) -> Swee
     started = time.time()
     for j, spec in enumerate(specs):
         weights = build_weights(spec, features)
-        gross[:, j] = np.einsum("ij,ij->i", weights, returns)
+        gross = np.einsum("ij,ij->i", weights, returns)
 
         costs = decompose(weights, adv, model)
+        before_spread[:, j] = gross - costs.slippage
         turnover[:, j] = costs.turnover
-        slippage[:, j] = costs.slippage
         peak[j] = costs.peak_participation
         binding[j] = costs.capacity_binding_days
         ceiling[j] = capacity_ceiling_usd(weights, adv, model)
 
     return Sweep(
         specs=specs,
-        gross=gross,
+        before_spread=before_spread,
         turnover=turnover,
-        slippage=slippage,
         peak_participation=peak,
         capacity_binding_days=binding,
         capacity_ceiling=ceiling,
@@ -226,9 +233,15 @@ def _live_columns(net: np.ndarray, turnover: np.ndarray, min_annual_turnover: fl
 
 
 def net_matrix(sweep: Sweep, round_trip_bps: float) -> np.ndarray:
-    """Every strategy's net return series at one point on the cost grid."""
-    spread = sweep.turnover.astype(float) * (round_trip_bps / 2.0) * 1e-4
-    return sweep.gross - spread - sweep.slippage.astype(float)
+    """Every strategy's net return series at one point on the cost grid.
+
+    Kept in single precision so this does not double the resident set every time
+    a cost level is scored.
+    """
+    if round_trip_bps == 0.0:
+        return sweep.before_spread
+    spread = np.float32(round_trip_bps / 2.0 * 1e-4)
+    return sweep.before_spread - sweep.turnover * spread
 
 
 def audit_sweep_at_cost(
@@ -246,7 +259,7 @@ def audit_sweep_at_cost(
     shorter slice.
     """
     windowed = net_matrix(sweep, round_trip_bps)
-    turnover = sweep.turnover.astype(float)
+    turnover = sweep.turnover
     dates = sweep.dates
     if window_days and window_days < windowed.shape[0]:
         windowed = windowed[-window_days:]
@@ -270,8 +283,8 @@ def audit_sweep_at_cost(
     family_sharpe = family_sharpe[live]
 
     winner = int(live_index[int(np.argmax(family_sharpe))])
-    winner_net = windowed[:, winner]
-    performance = summarize(winner_net, turnover[:, winner])
+    winner_net = windowed[:, winner].astype(np.float64)
+    performance = summarize(winner_net, turnover[:, winner].astype(np.float64))
 
     effective = effective_trials(net)
     deflated = deflated_sharpe_ratio(

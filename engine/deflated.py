@@ -170,7 +170,7 @@ def effective_trials(returns: np.ndarray) -> float:
     cheaper choice and errs in the conservative direction, since it never reports
     more trials than there are columns.
     """
-    matrix = np.asarray(returns, dtype=float)
+    matrix = np.asarray(returns)
     if matrix.ndim != 2 or matrix.shape[1] < 2:
         return float(matrix.shape[1] if matrix.ndim == 2 else 1)
 
@@ -200,17 +200,17 @@ def _correlation_eigenvalues(matrix: np.ndarray) -> np.ndarray:
     year window against three thousand strategies would otherwise decompose a
     3456 square matrix to recover 504 useful numbers.
     """
-    centered = matrix - matrix.mean(axis=0)
-    scale = centered.std(axis=0)
+    centered = matrix - matrix.mean(axis=0, dtype=np.float64).astype(matrix.dtype)
+    scale = centered.std(axis=0, dtype=np.float64).astype(matrix.dtype)
     standardized = np.divide(
         centered, scale, out=np.zeros_like(centered), where=scale > 0
     )
 
     n_days, n_strategies = standardized.shape
     if n_strategies <= n_days:
-        gram = standardized.T @ standardized / n_days
+        gram = np.matmul(standardized.T, standardized, dtype=np.float64) / n_days
     else:
-        gram = standardized @ standardized.T / n_days
+        gram = np.matmul(standardized, standardized.T, dtype=np.float64) / n_days
 
     eigenvalues = np.linalg.eigvalsh(np.nan_to_num(gram, nan=0.0))
     return np.clip(eigenvalues, 0.0, None)

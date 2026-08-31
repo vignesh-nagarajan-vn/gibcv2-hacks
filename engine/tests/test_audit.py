@@ -91,9 +91,8 @@ def _sweep(n_days=600, n_specs=5, seed=0):
     rng = np.random.default_rng(seed)
     return Sweep(
         specs=[],
-        gross=rng.normal(0.0003, 0.01, (n_days, n_specs)),
+        before_spread=rng.normal(0.0003, 0.01, (n_days, n_specs)).astype(np.float32),
         turnover=rng.uniform(0.0, 0.4, (n_days, n_specs)).astype(np.float32),
-        slippage=rng.uniform(0.0, 1e-5, (n_days, n_specs)).astype(np.float32),
         peak_participation=np.zeros(n_specs),
         capacity_binding_days=np.zeros(n_specs, dtype=np.int32),
         capacity_ceiling=np.full(n_specs, np.inf),
@@ -110,16 +109,33 @@ def test_the_cost_grid_recombines_exactly_and_linearly():
     at_10 = net_matrix(sweep, 10.0)
     at_20 = net_matrix(sweep, 20.0)
 
-    np.testing.assert_allclose(at_20 - at_0, 2.0 * (at_10 - at_0), rtol=1e-9)
-    np.testing.assert_allclose(
-        at_0, sweep.gross - sweep.slippage.astype(float), rtol=1e-12
-    )
+    # Compared in double precision. The stored matrices are float32, so
+    # differencing two nearly equal returns leaves only a few significant digits,
+    # and the tolerance has to reflect that rather than the size of the returns.
+    spread_at_10 = (at_10.astype(np.float64) - at_0.astype(np.float64))
+    spread_at_20 = (at_20.astype(np.float64) - at_0.astype(np.float64))
+    expected = -sweep.turnover.astype(np.float64) * 5.0 * 1e-4
+
+    np.testing.assert_allclose(spread_at_20, 2.0 * spread_at_10, atol=5e-9)
+    np.testing.assert_allclose(spread_at_10, expected, atol=5e-9)
+    np.testing.assert_array_equal(at_0, sweep.before_spread)
 
 
 def test_higher_costs_never_improve_a_strategy():
     sweep = _sweep()
     for level in (5.0, 10.0, 25.0):
-        assert (net_matrix(sweep, level) <= net_matrix(sweep, 0.0) + 1e-15).all()
+        assert (net_matrix(sweep, level) <= net_matrix(sweep, 0.0) + 1e-9).all()
+
+
+def test_the_sweep_stays_in_single_precision():
+    """Peak memory is the constraint that decides how wide the grid can be."""
+    sweep = _sweep()
+
+    assert sweep.before_spread.dtype == np.float32
+    assert sweep.turnover.dtype == np.float32
+    assert net_matrix(sweep, 10.0).dtype == np.float32
+    # Zero cost returns the stored matrix rather than a copy of it.
+    assert net_matrix(sweep, 0.0) is sweep.before_spread
 
 
 def test_single_strategy_audit_uses_the_null_dispersion_by_default():

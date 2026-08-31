@@ -30,7 +30,16 @@ FLAT_VOL_TOLERANCE = 1e-12
 
 
 def _as_matrix(returns: np.ndarray) -> tuple[np.ndarray, bool]:
-    arr = np.asarray(returns, dtype=float)
+    """View the input as a 2-D float array without upcasting a float32 panel.
+
+    The sweep holds its matrices in single precision to keep peak memory down.
+    Forcing float64 here would silently double a 75 MB array every time a metric
+    is called on the whole family. Reductions below pass an explicit float64
+    accumulator instead, which buys the accuracy without the copy.
+    """
+    arr = np.asarray(returns)
+    if arr.dtype.kind != "f":
+        arr = arr.astype(np.float64)
     if arr.ndim == 1:
         return arr[:, None], True
     return arr, False
@@ -43,8 +52,8 @@ def _unwrap(values: np.ndarray, was_1d: bool):
 def sharpe(returns: np.ndarray, periods: int = ANNUALIZATION):
     """Annualized Sharpe. A zero-variance series scores zero rather than infinity."""
     arr, flat = _as_matrix(returns)
-    mu = arr.mean(axis=0)
-    sd = arr.std(axis=0)
+    mu = arr.mean(axis=0, dtype=np.float64)
+    sd = arr.std(axis=0, dtype=np.float64)
     out = np.divide(mu, sd, out=np.zeros_like(mu), where=sd > FLAT_VOL_TOLERANCE) * np.sqrt(periods)
     return _unwrap(out, flat)
 
@@ -61,7 +70,7 @@ def annualized_return(returns: np.ndarray, periods: int = ANNUALIZATION):
 
 def annualized_vol(returns: np.ndarray, periods: int = ANNUALIZATION):
     arr, flat = _as_matrix(returns)
-    return _unwrap(arr.std(axis=0) * np.sqrt(periods), flat)
+    return _unwrap(arr.std(axis=0, dtype=np.float64) * np.sqrt(periods), flat)
 
 
 def skewness(returns: np.ndarray):
