@@ -134,9 +134,9 @@ def test_every_cost_level_appears_in_every_artifact():
 @needs_artifacts
 def test_the_headline_window_is_one_of_the_declared_windows():
     meta = _load("meta.json")
-    headline = meta["search"]["windows"]["headline"]
+    headline = meta["windows"]["headline"]
 
-    assert headline in meta["search"]["windows"]["labels"]
+    assert headline in meta["windows"]["labels"]
     assert _load("mirage.json")["headline_window"] == headline
     assert _load("audit.json")["headline_window"] == headline
 
@@ -146,7 +146,7 @@ def test_track_record_covers_every_window_and_cost():
     meta = _load("meta.json")
     rows = _load("audit.json")["track_record"]["rows"]
     levels = {float(b) for b in meta["cost_model"]["grid_bps"]}
-    windows = set(meta["search"]["windows"]["labels"])
+    windows = set(meta["windows"]["labels"])
 
     assert {r["window"] for r in rows} == windows
     assert {r["round_trip_bps"] for r in rows} == levels
@@ -171,17 +171,41 @@ def test_a_shorter_window_lets_the_search_find_more():
 def test_the_headline_window_actually_looks_like_a_mirage():
     """Section two has to be seductive or the demo makes no point.
 
-    A high observed Sharpe paired with a deflated Sharpe on the floor is the
-    whole claim. If this test fails, the page is showing a flat line and telling
-    the reader it is dangerous.
+    The claim is a strong observed Sharpe that neither statistic will sign off
+    on. If this fails, the page is showing a flat line and calling it dangerous,
+    which persuades nobody.
+
+    Note which statistic does the work at this window. The deflated Sharpe is
+    middling rather than damning, because the search found something that does
+    clear the deflation bar. PBO is what condemns it: the winner does not stay a
+    winner out of sample. On the full sample the two swap roles.
     """
     mirage = _load("mirage.json")
     audit = _load("audit.json")
     level = "10"
 
-    assert mirage["by_cost"][level]["winner"]["performance"]["sharpe"] > 0.8
-    assert audit["by_cost"][level]["deflated"]["deflated_sharpe"] < 0.5
-    assert audit["by_cost"][level]["verdict"]["tier"] in {"discard", "unproven"}
+    assert mirage["by_cost"][level]["winner"]["performance"]["sharpe"] > 1.0
+    assert audit["by_cost"][level]["deflated"]["deflated_sharpe"] < 0.80
+    assert audit["by_cost"][level]["pbo"]["pbo"] > 0.50
+    assert audit["by_cost"][level]["verdict"]["tier"] == "discard"
+
+
+@needs_artifacts
+def test_the_two_statistics_catch_the_search_at_different_horizons():
+    """Neither statistic is sufficient alone, which is why both are reported.
+
+    On a short window the search clears the deflation bar but fails to repeat out
+    of sample, so PBO is the binding constraint. On the full sample the achievable
+    edge collapses while the bar stays up, so the deflated Sharpe is. A tool that
+    reported only one of them would pass one of these two cases.
+    """
+    audit = _load("audit.json")
+    short = audit["by_cost"]["10"]
+    full = audit["long_sample"]["10"]
+
+    assert short["pbo"]["pbo"] > 0.5 and short["deflated"]["deflated_sharpe"] > 0.5
+    assert full["deflated"]["deflated_sharpe"] < 0.05
+    assert full["verdict"]["tier"] == "discard"
 
 
 @needs_artifacts

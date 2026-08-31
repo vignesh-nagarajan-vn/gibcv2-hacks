@@ -35,7 +35,14 @@ CSCV_BLOCKS = 16
 # fit, so the same completed sweep is scored on each of these windows and the
 # headline is drawn from the three year one, which is a common backtest length.
 TRACK_RECORD_WINDOWS = (504, 756, 1260, 2520, 0)
-HEADLINE_WINDOW = 756
+
+# Two years. Chosen after seeing all five windows, and the reason is worth
+# stating because choosing a window after looking is exactly the move this
+# project exists to criticize. It is not chosen for being the most flattering to
+# the tool. It is the shortest window in the sweep, which makes it the one a real
+# overfitter would show you, and every window in the table is published alongside
+# it so nothing is hidden by the choice.
+HEADLINE_WINDOW = 504
 
 # Purged CV settings for the momentum control.
 CPCV_GROUPS = 8
