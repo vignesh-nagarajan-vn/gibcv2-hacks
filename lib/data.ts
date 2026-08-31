@@ -70,6 +70,20 @@ export interface Histogram {
   p95?: number;
 }
 
+export interface TrackRecordRow {
+  window: string;
+  window_years: number;
+  window_days: number;
+  round_trip_bps: number;
+  observed_sharpe: number;
+  benchmark_sharpe: number;
+  deflated_sharpe: number;
+  probabilistic_sharpe: number;
+  effective_trials: number;
+  pbo: number;
+  tier: string;
+}
+
 export interface Degradation {
   points: [number, number][];
   sampled: number;
@@ -94,6 +108,7 @@ export const meta = metaJson as unknown as {
   benchmark: { ticker: string; performance: Performance };
   universe: string[];
   search: { n_trials: number; families: string[]; sweep_seconds: number };
+  windows: { headline: string; labels: string[]; days: number[] };
   cost_model: {
     grid_bps: number[];
     aum_usd: number;
@@ -109,42 +124,51 @@ export const meta = metaJson as unknown as {
   };
 };
 
+export interface MirageBlock {
+  round_trip_bps: number;
+  window_days: number;
+  window_years: number;
+  window_start: string;
+  window_end: string;
+  n_live_strategies: number;
+  n_degenerate_strategies: number;
+  winner: {
+    index: number;
+    name: string;
+    spec: Record<string, string | number | boolean>;
+    performance: Performance;
+    capacity_ceiling_usd: number | null;
+    peak_participation: number;
+    capacity_binding_days: number;
+  };
+  equity_curve: CurvePoint[];
+  family_sharpe: Histogram;
+}
+
 export const mirage = mirageJson as unknown as {
-  by_cost: Record<
-    string,
-    {
-      round_trip_bps: number;
-      n_live_strategies: number;
-      n_degenerate_strategies: number;
-      winner: {
-        index: number;
-        name: string;
-        spec: Record<string, string | number | boolean>;
-        performance: Performance;
-        capacity_ceiling_usd: number | null;
-        peak_participation: number;
-        capacity_binding_days: number;
-      };
-      equity_curve: CurvePoint[];
-      family_sharpe: Histogram;
-    }
-  >;
+  headline_window: string;
+  by_cost: Record<string, MirageBlock>;
+  long_sample: Record<string, MirageBlock>;
   benchmark_curve: CurvePoint[];
   benchmark_sharpe: number;
 };
 
+export interface AuditBlock {
+  round_trip_bps: number;
+  window_days: number;
+  window_years: number;
+  deflated: Deflated;
+  pbo: Pbo;
+  logit_histogram: Histogram;
+  degradation: Degradation;
+  verdict: Verdict;
+}
+
 export const audit = auditJson as unknown as {
-  by_cost: Record<
-    string,
-    {
-      round_trip_bps: number;
-      deflated: Deflated;
-      pbo: Pbo;
-      logit_histogram: Histogram;
-      degradation: Degradation;
-      verdict: Verdict;
-    }
-  >;
+  headline_window: string;
+  by_cost: Record<string, AuditBlock>;
+  long_sample: Record<string, AuditBlock>;
+  track_record: { rows: TrackRecordRow[] };
   cost_sensitivity: {
     round_trip_bps: number[];
     observed_sharpe: number[];

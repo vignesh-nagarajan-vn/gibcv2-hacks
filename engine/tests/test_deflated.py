@@ -240,3 +240,34 @@ def test_result_dict_is_json_safe():
 
     assert payload["minimum_track_record_years"] is None, "infinity becomes null, not inf"
     assert all(v is None or isinstance(v, (int, float)) for v in payload.values())
+
+
+def test_effective_trials_agrees_with_the_direct_correlation_route():
+    """The Gram-matrix shortcut must give the same number as the obvious way."""
+    rng = np.random.default_rng(51)
+
+    for shape in ((600, 40), (40, 600), (200, 200)):
+        matrix = rng.normal(size=shape)
+        corr = np.corrcoef(matrix, rowvar=False)
+        eig = np.clip(np.linalg.eigvalsh(np.nan_to_num(corr)), 0.0, None)
+        direct = float(eig.sum() ** 2 / (eig**2).sum())
+
+        assert effective_trials(matrix) == pytest.approx(direct, rel=1e-6), shape
+
+
+def test_effective_trials_handles_more_strategies_than_days():
+    """A short window against a wide grid, which is the track record sweep."""
+    rng = np.random.default_rng(52)
+    matrix = rng.normal(size=(120, 1500))
+
+    result = effective_trials(matrix)
+
+    assert 1.0 <= result <= 120.0, "rank is capped by the number of days"
+
+
+def test_null_sharpe_variance_is_one_over_the_years():
+    from engine.deflated import null_sharpe_variance
+
+    assert math.sqrt(null_sharpe_variance(2520)) == pytest.approx(1 / math.sqrt(10), rel=1e-12)
+    assert math.sqrt(null_sharpe_variance(252 * 100)) == pytest.approx(0.1, rel=1e-12)
+    assert null_sharpe_variance(2520) > null_sharpe_variance(25200)

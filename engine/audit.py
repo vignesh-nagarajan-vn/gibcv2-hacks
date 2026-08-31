@@ -231,9 +231,29 @@ def net_matrix(sweep: Sweep, round_trip_bps: float) -> np.ndarray:
     return sweep.gross - spread - sweep.slippage.astype(float)
 
 
-def audit_sweep_at_cost(sweep: Sweep, round_trip_bps: float, n_blocks: int = CSCV_BLOCKS) -> dict:
-    """Pick the winner at this cost level and put it through the full audit."""
-    net = net_matrix(sweep, round_trip_bps)
+def audit_sweep_at_cost(
+    sweep: Sweep,
+    round_trip_bps: float,
+    n_blocks: int = CSCV_BLOCKS,
+    window_days: int = 0,
+) -> dict:
+    """Pick the winner at this cost level and window, then run the full audit.
+
+    `window_days` of zero means the whole sample. Anything else takes the most
+    recent stretch of that length, which is the honest way to ask what a search
+    of this size would have produced for someone who only had that much history.
+    The sweep itself is never re-run: the same simulated returns are scored on a
+    shorter slice.
+    """
+    windowed = net_matrix(sweep, round_trip_bps)
+    turnover = sweep.turnover.astype(float)
+    dates = sweep.dates
+    if window_days and window_days < windowed.shape[0]:
+        windowed = windowed[-window_days:]
+        turnover = turnover[-window_days:]
+        dates = dates[-window_days:]
+
+    net = windowed
     family_sharpe = np.asarray(sharpe(net))
 
     # A strategy that never takes a position has zero volatility and therefore a
@@ -241,17 +261,17 @@ def audit_sweep_at_cost(sweep: Sweep, round_trip_bps: float, n_blocks: int = CSC
     # every strategy that actually trades, and the search happily crowns a rule
     # that does nothing. That is not a mirage, it is an artifact, so degenerate
     # columns are excluded from selection and from the family statistics.
-    live = _live_columns(net, sweep.turnover)
+    live = _live_columns(net, turnover)
     if not live.any():
         raise RuntimeError("every strategy in the family is degenerate")
 
+    live_index = np.flatnonzero(live)
     net = net[:, live]
     family_sharpe = family_sharpe[live]
-    live_index = np.flatnonzero(live)
 
     winner = int(live_index[int(np.argmax(family_sharpe))])
-    winner_net = net_matrix(sweep, round_trip_bps)[:, winner]
-    performance = summarize(winner_net, sweep.turnover[:, winner].astype(float))
+    winner_net = windowed[:, winner]
+    performance = summarize(winner_net, turnover[:, winner])
 
     effective = effective_trials(net)
     deflated = deflated_sharpe_ratio(
@@ -277,10 +297,14 @@ def audit_sweep_at_cost(sweep: Sweep, round_trip_bps: float, n_blocks: int = CSC
     )
 
     curve = equity_curve(winner_net)[:, 0]
-    curve_dates = pd.DatetimeIndex([sweep.dates[0]]).append(sweep.dates)
+    curve_dates = pd.DatetimeIndex([dates[0]]).append(dates)
 
     return {
         "round_trip_bps": float(round_trip_bps),
+        "window_days": int(net.shape[0]),
+        "window_years": round(net.shape[0] / ANNUALIZATION, 2),
+        "window_start": dates[0].date().isoformat(),
+        "window_end": dates[-1].date().isoformat(),
         "n_live_strategies": int(live.sum()),
         "n_degenerate_strategies": int((~live).sum()),
         "winner": {
@@ -432,6 +456,36 @@ def audit_published_momentum(factors: pd.DataFrame) -> dict:
     audited["by_era"] = by_era
 
     return audited
+
+
+def track_record_summary(by_window: dict) -> dict:
+    """One row per window and cost level, for the sample-length chart.
+
+    The point this makes is the one the deflated Sharpe encodes and an ordinary
+    Sharpe hides. A search of fixed size manufactures a larger apparent edge the
+    less data it has to fit, while the bar that edge has to clear rises at the
+    same time.
+    """
+    rows = []
+    for window, audits in by_window.items():
+        for level, entry in audits.items():
+            rows.append(
+                {
+                    "window": window,
+                    "window_years": entry["window_years"],
+                    "window_days": entry["window_days"],
+                    "round_trip_bps": entry["round_trip_bps"],
+                    "observed_sharpe": entry["winner"]["performance"]["sharpe"],
+                    "benchmark_sharpe": entry["deflated"]["benchmark_sharpe"],
+                    "deflated_sharpe": entry["deflated"]["deflated_sharpe"],
+                    "probabilistic_sharpe": entry["deflated"]["probabilistic_sharpe"],
+                    "effective_trials": entry["deflated"]["effective_trials"],
+                    "pbo": entry["pbo"]["pbo"],
+                    "tier": entry["verdict"]["tier"],
+                }
+            )
+    rows.sort(key=lambda r: (r["window_days"], r["round_trip_bps"]))
+    return {"rows": rows}
 
 
 def cost_sensitivity(sweep_audits: dict) -> dict:

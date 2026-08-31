@@ -9,6 +9,7 @@ import {
   FoldSharpes,
   LogitHistogram,
   SharpeDistribution,
+  TrackRecordChart,
 } from "@/components/charts";
 import { Figure, Section, Stat, StatRow, Table, VerdictCard, fmt } from "@/components/primitives";
 import { COST_LEVELS, audit, control, meta, mirage } from "@/lib/data";
@@ -56,13 +57,18 @@ export function Report() {
 
   const m = mirage.by_cost[cost];
   const a = audit.by_cost[cost];
+  const longM = mirage.long_sample[cost];
+  const longA = audit.long_sample[cost];
   const own = control.own.by_cost[cost];
   const published = control.published;
   const sensitivity = audit.cost_sensitivity;
+  const trackRecord = audit.track_record.rows.filter(
+    (row) => row.round_trip_bps === m.round_trip_bps,
+  );
 
   const winner = m.winner;
   const perf = winner.performance;
-  const years = perf.n_days / meta.annualization;
+  const years = m.window_years;
 
   return (
     <>
@@ -77,14 +83,16 @@ export function Report() {
         lede={
           <>
             <p>
-              Here is the winner of {fmt.int(m.n_live_strategies)} trials, presented the way a
-              naive backtest presents itself. One equity curve, one Sharpe, no mention of the
-              other {fmt.int(m.n_live_strategies - 1)} rules that were tried and discarded.
+              Here is the winner of {fmt.int(m.n_live_strategies)} trials over{" "}
+              {m.window_start} to {m.window_end}, presented the way a naive backtest presents
+              itself. One equity curve, one Sharpe, no mention of the other{" "}
+              {fmt.int(m.n_live_strategies - 1)} rules that were tried and discarded.
             </p>
             <p className="mt-4">
-              Nothing on this screen is wrong. The curve is real, the data is real, and the
-              costs are already charged at {m.round_trip_bps} basis points round trip. This is
-              what a strategy looks like the moment before anyone asks how hard you looked.
+              Nothing on this screen is wrong. The curve is real, the prices are real, the book
+              is dollar neutral so none of this is market exposure in disguise, and costs are
+              already charged at {m.round_trip_bps} basis points round trip. This is what a
+              strategy looks like the moment before anyone asks how hard you looked.
             </p>
           </>
         }
@@ -96,7 +104,7 @@ export function Report() {
           <Stat
             label="Track record"
             value={`${years.toFixed(1)}y`}
-            note={`${meta.data.start} to ${meta.data.end}`}
+            note={`${fmt.int(perf.n_days)} trading days`}
           />
         </StatRow>
 
@@ -104,7 +112,7 @@ export function Report() {
           <div className="lg:col-span-2">
             <Figure
               label="Growth of one dollar, log scale"
-              caption={`The winning rule against ${meta.benchmark.ticker} over the same window. Log scale, because a linear axis on a twenty year curve hides everything that happened in the first decade.`}
+              caption={`The winning rule against ${meta.benchmark.ticker} over the same window. Log scale, because a linear axis hides everything that happens early in a curve.`}
             >
               <EquityCurve series={m.equity_curve} benchmark={mirage.benchmark_curve} />
             </Figure>
@@ -233,6 +241,44 @@ export function Report() {
 
         <div className="mt-6 grid gap-6 lg:grid-cols-2">
           <Figure
+            label="The same search, over different track record lengths"
+            caption={
+              <>
+                The search size is held fixed at {fmt.int(meta.search.n_trials)} trials and only
+                the amount of history changes. The best result the search can find falls as the
+                window lengthens, because there is less room to fit. The bar it has to clear
+                falls too, but more slowly. Over{" "}
+                {trackRecord[0]?.window_years.toFixed(0)} years the search manufactures a Sharpe
+                of {fmt.n(trackRecord[0]?.observed_sharpe)}. Over{" "}
+                {trackRecord[trackRecord.length - 1]?.window_years.toFixed(0)} years the same
+                grid manages {fmt.n(trackRecord[trackRecord.length - 1]?.observed_sharpe)}. The
+                deflated Sharpe, on the right axis, stays near zero throughout, which is the
+                statistic doing its job.
+              </>
+            }
+          >
+            <TrackRecordChart rows={trackRecord} />
+          </Figure>
+          <Figure
+            label="Track record, side by side"
+            caption="A short backtest is not weaker evidence of the same thing. It is a different thing, because a fixed search has proportionally more freedom to fit it."
+          >
+            <Table
+              head={["Window", "Days", "Sharpe", "Bar", "DSR", "PBO"]}
+              rows={trackRecord.map((row) => [
+                `${row.window_years.toFixed(row.window_years < 10 ? 0 : 1)}y`,
+                fmt.int(row.window_days),
+                fmt.n(row.observed_sharpe),
+                fmt.n(row.benchmark_sharpe),
+                fmt.pct(row.deflated_sharpe, 1),
+                fmt.pct(row.pbo, 0),
+              ])}
+            />
+          </Figure>
+        </div>
+
+        <div className="mt-6 grid gap-6 lg:grid-cols-2">
+          <Figure
             label="Deflated Sharpe against assumed cost"
             caption="The observed Sharpe drifts down as costs rise. The deflated Sharpe falls faster, because higher costs also widen the spread of outcomes across the family, which raises the bar the winner has to clear."
           >
@@ -257,6 +303,25 @@ export function Report() {
                 sensitivity.tier[i],
               ])}
             />
+          </Figure>
+        </div>
+        <div className="mt-6">
+          <Figure
+            label={`The same family over the full ${longM.window_years.toFixed(1)} year sample`}
+            caption={
+              <>
+                For completeness, the identical grid scored on everything from{" "}
+                {longM.window_start} to {longM.window_end}. The best of{" "}
+                {fmt.int(longM.n_live_strategies)} trials reaches a Sharpe of{" "}
+                {fmt.n(longM.winner.performance.sharpe)} against a deflation bar of{" "}
+                {fmt.n(longA.deflated.benchmark_sharpe)}, for a deflated Sharpe of{" "}
+                {fmt.pct(longA.deflated.deflated_sharpe)} and a PBO of {fmt.pct(longA.pbo.pbo)}.
+                Twenty one years of data is simply harder to fit than three, and no amount of
+                searching produced a curve worth showing.
+              </>
+            }
+          >
+            <EquityCurve series={longM.equity_curve} height={220} />
           </Figure>
         </div>
       </Section>

@@ -179,13 +179,41 @@ def effective_trials(returns: np.ndarray) -> float:
     if matrix.shape[1] < 2:
         return float(max(matrix.shape[1], 1))
 
-    corr = np.corrcoef(matrix, rowvar=False)
-    corr = np.nan_to_num(corr, nan=0.0)
-    eigenvalues = np.clip(np.linalg.eigvalsh(corr), 0.0, None)
+    eigenvalues = _correlation_eigenvalues(matrix)
     denominator = float((eigenvalues**2).sum())
     if denominator <= 0:
         return 1.0
     return float(eigenvalues.sum() ** 2 / denominator)
+
+
+def _correlation_eigenvalues(matrix: np.ndarray) -> np.ndarray:
+    """Non-zero eigenvalues of the column correlation matrix.
+
+    Formed from whichever Gram matrix is smaller. For a [days, strategies] panel
+    the correlation matrix is strategies by strategies, but when there are fewer
+    days than strategies it has at most `days` non-zero eigenvalues, and those
+    are exactly the eigenvalues of the days by days Gram matrix of the same
+    standardized data. The zeros contribute nothing to either sum in the
+    participation ratio, so dropping them changes no answer.
+
+    This matters because the audit runs over several track record lengths. A two
+    year window against three thousand strategies would otherwise decompose a
+    3456 square matrix to recover 504 useful numbers.
+    """
+    centered = matrix - matrix.mean(axis=0)
+    scale = centered.std(axis=0)
+    standardized = np.divide(
+        centered, scale, out=np.zeros_like(centered), where=scale > 0
+    )
+
+    n_days, n_strategies = standardized.shape
+    if n_strategies <= n_days:
+        gram = standardized.T @ standardized / n_days
+    else:
+        gram = standardized @ standardized.T / n_days
+
+    eigenvalues = np.linalg.eigvalsh(np.nan_to_num(gram, nan=0.0))
+    return np.clip(eigenvalues, 0.0, None)
 
 
 def minimum_track_record_length(

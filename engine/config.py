@@ -30,6 +30,13 @@ BENCHMARK = "SPY"
 # the PBO estimate without making the combinatorics unpleasant.
 CSCV_BLOCKS = 16
 
+# Track record lengths the mirage is audited over, in trading days. Zero means
+# the whole sample. Overfitting is a function of how much data the search had to
+# fit, so the same completed sweep is scored on each of these windows and the
+# headline is drawn from the three year one, which is a common backtest length.
+TRACK_RECORD_WINDOWS = (504, 756, 1260, 2520, 0)
+HEADLINE_WINDOW = 756
+
 # Purged CV settings for the momentum control.
 CPCV_GROUPS = 8
 CPCV_TEST_GROUPS = 2

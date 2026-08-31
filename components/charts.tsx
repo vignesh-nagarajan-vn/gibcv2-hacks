@@ -17,13 +17,12 @@ import {
   ReferenceLine,
   ResponsiveContainer,
   Scatter,
-  ScatterChart,
   Tooltip,
   XAxis,
   YAxis,
 } from "recharts";
 
-import type { CurvePoint, Degradation, Histogram } from "@/lib/data";
+import type { CurvePoint, Degradation, Histogram, TrackRecordRow } from "@/lib/data";
 
 const AXIS = { stroke: "#4a5162", fontSize: 11, fontFamily: "var(--font-mono)" };
 const GRID = "#1f242f";
@@ -383,6 +382,100 @@ export function FoldSharpes({ folds, height = 260 }: { folds: number[]; height?:
           ))}
         </Bar>
       </BarChart>
+    </ResponsiveContainer>
+  );
+}
+
+export function TrackRecordChart({
+  rows,
+  height = 300,
+}: {
+  rows: TrackRecordRow[];
+  height?: number;
+}) {
+  const data = rows.map((row) => ({
+    years: row.window_years,
+    observed: row.observed_sharpe,
+    bar: row.benchmark_sharpe,
+    deflated: row.deflated_sharpe,
+  }));
+
+  return (
+    <ResponsiveContainer width="100%" height={height}>
+      <ComposedChart data={data} margin={{ top: 8, right: 12, bottom: 24, left: 4 }}>
+        <CartesianGrid stroke={GRID} vertical={false} />
+        <XAxis
+          dataKey="years"
+          type="number"
+          scale="log"
+          domain={["auto", "auto"]}
+          tick={AXIS}
+          tickLine={false}
+          axisLine={{ stroke: GRID }}
+          ticks={data.map((d) => d.years)}
+          tickFormatter={(v: number) => `${v}y`}
+          label={{
+            value: "track record length",
+            position: "insideBottom",
+            offset: -14,
+            fill: "#767d8d",
+            fontSize: 11,
+          }}
+        />
+        <YAxis
+          yAxisId="left"
+          tick={AXIS}
+          tickLine={false}
+          axisLine={false}
+          width={48}
+          tickFormatter={(v: number) => v.toFixed(1)}
+        />
+        <YAxis
+          yAxisId="right"
+          orientation="right"
+          tick={AXIS}
+          tickLine={false}
+          axisLine={false}
+          width={48}
+          domain={[0, 1]}
+          tickFormatter={(v: number) => `${(v * 100).toFixed(0)}%`}
+        />
+        <ReferenceLine yAxisId="left" y={0} stroke="#767d8d" strokeDasharray="3 3" />
+        <Tooltip
+          {...tooltipStyle}
+          labelFormatter={(v: number) => `${v} year window`}
+          formatter={(v: number, name: string) => {
+            if (name === "deflated") return [`${(Number(v) * 100).toFixed(1)}%`, "deflated Sharpe"];
+            if (name === "bar") return [Number(v).toFixed(3), "deflation bar"];
+            return [Number(v).toFixed(3), "best of the search"];
+          }}
+        />
+        <Line
+          yAxisId="left"
+          dataKey="observed"
+          stroke={SIGNAL}
+          strokeWidth={2}
+          dot={{ r: 3, fill: SIGNAL }}
+          isAnimationActive={false}
+        />
+        <Line
+          yAxisId="left"
+          dataKey="bar"
+          stroke="#b4472f"
+          strokeWidth={1.5}
+          strokeDasharray="5 4"
+          dot={{ r: 3, fill: "#b4472f" }}
+          isAnimationActive={false}
+        />
+        <Line
+          yAxisId="right"
+          dataKey="deflated"
+          stroke="#a8aebc"
+          strokeWidth={1.25}
+          dot={{ r: 2, fill: "#a8aebc" }}
+          isAnimationActive={false}
+        />
+      </ComposedChart>
     </ResponsiveContainer>
   );
 }

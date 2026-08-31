@@ -33,6 +33,7 @@ from engine.audit import (
     audit_sweep_at_cost,
     cost_sensitivity,
     run_sweep,
+    track_record_summary,
 )
 from engine.config import (
     ANNUALIZATION,
@@ -42,8 +43,10 @@ from engine.config import (
     CPCV_EMBARGO_DAYS,
     CPCV_GROUPS,
     CPCV_TEST_GROUPS,
+    HEADLINE_WINDOW,
     RESULTS_DIR,
     SEED,
+    TRACK_RECORD_WINDOWS,
 )
 from engine.costs import (
     DEFAULT_AUM_USD,
@@ -79,16 +82,27 @@ def run_all() -> int:
     sweep = run_sweep(panel, specs, model)
     _log(f"  done in {sweep.seconds:.0f}s")
 
-    audits = {}
-    for bps in COST_GRID_BPS:
-        _log(f"auditing at {bps:.0f} bps round trip")
-        audits[f"{bps:.0f}"] = audit_sweep_at_cost(sweep, bps, n_blocks=CSCV_BLOCKS)
-        entry = audits[f"{bps:.0f}"]
-        _log(
-            f"  winner sharpe {entry['winner']['performance']['sharpe']:.3f}, "
-            f"DSR {entry['deflated']['deflated_sharpe']:.3f}, "
-            f"PBO {entry['pbo']['pbo']:.3f}, verdict {entry['verdict']['tier']}"
-        )
+    by_window = {}
+    for window in TRACK_RECORD_WINDOWS:
+        label = _window_label(window)
+        by_window[label] = {}
+        for bps in COST_GRID_BPS:
+            entry = audit_sweep_at_cost(
+                sweep, bps, n_blocks=CSCV_BLOCKS, window_days=window
+            )
+            by_window[label][f"{bps:.0f}"] = entry
+            _log(
+                f"  {label:>5} window, {bps:>2.0f} bps: sharpe "
+                f"{entry['winner']['performance']['sharpe']:>6.3f}, bar "
+                f"{entry['deflated']['benchmark_sharpe']:.2f}, DSR "
+                f"{entry['deflated']['deflated_sharpe']:.3f}, PBO "
+                f"{entry['pbo']['pbo']:.3f}, {entry['verdict']['tier']}"
+            )
+
+    headline = _window_label(HEADLINE_WINDOW)
+    audits = by_window[headline]
+    long_sample = by_window[_window_label(0)]
+    _log(f"headline window is {headline}")
 
     _log("auditing our own momentum implementation")
     own = audit_own_momentum(panel, factors, model)
@@ -103,7 +117,9 @@ def run_all() -> int:
     )
 
     _log("writing artifacts")
-    sizes = _write_artifacts(panel, sweep, audits, own, published, described)
+    sizes = _write_artifacts(
+        panel, sweep, audits, long_sample, by_window, own, published, described, headline
+    )
     for name, size in sizes["files"].items():
         _log(f"  {name:<16} {size / 1024:>7.1f} KB")
     _log(f"  total {sizes['total_bytes'] / 1024:.1f} KB of a {sizes['budget_bytes'] / 1024:.0f} KB budget")
@@ -111,7 +127,46 @@ def run_all() -> int:
     return 0
 
 
-def _write_artifacts(panel, sweep, audits, own, published, described) -> dict:
+def _window_label(window_days: int) -> str:
+    """Short label used as the JSON key for a track record length."""
+    if not window_days:
+        return "full"
+    return f"{window_days / ANNUALIZATION:.0f}y"
+
+
+def _mirage_block(entry: dict) -> dict:
+    return {
+        "round_trip_bps": entry["round_trip_bps"],
+        "window_days": entry["window_days"],
+        "window_years": entry["window_years"],
+        "window_start": entry["window_start"],
+        "window_end": entry["window_end"],
+        "n_live_strategies": entry["n_live_strategies"],
+        "n_degenerate_strategies": entry["n_degenerate_strategies"],
+        "winner": entry["winner"],
+        "equity_curve": thin_curve(
+            entry["equity_curve"]["dates"], entry["equity_curve"]["values"]
+        ),
+        "family_sharpe": binned_distribution(entry["family_sharpe"]),
+    }
+
+
+def _audit_block(entry: dict) -> dict:
+    return {
+        "round_trip_bps": entry["round_trip_bps"],
+        "window_days": entry["window_days"],
+        "window_years": entry["window_years"],
+        "deflated": entry["deflated"],
+        "pbo": entry["pbo"],
+        "logit_histogram": entry["logit_histogram"],
+        "degradation": entry["degradation"],
+        "verdict": entry["verdict"],
+    }
+
+
+def _write_artifacts(
+    panel, sweep, audits, long_sample, by_window, own, published, described, headline
+) -> dict:
     benchmark = panel.benchmark_returns.dropna()
 
     write_json(
@@ -132,6 +187,11 @@ def _write_artifacts(panel, sweep, audits, own, published, described) -> dict:
                 "families": sorted({s.family for s in sweep.specs}),
                 "sweep_seconds": round(sweep.seconds, 1),
             },
+            "windows": {
+                "headline": headline,
+                "labels": [_window_label(w) for w in TRACK_RECORD_WINDOWS],
+                "days": [w or described["n_days"] for w in TRACK_RECORD_WINDOWS],
+            },
             "cost_model": {
                 "grid_bps": list(COST_GRID_BPS),
                 "aum_usd": DEFAULT_AUM_USD,
@@ -148,22 +208,14 @@ def _write_artifacts(panel, sweep, audits, own, published, described) -> dict:
         },
     )
 
-    mirage = {}
-    for level, entry in audits.items():
-        mirage[level] = {
-            "round_trip_bps": entry["round_trip_bps"],
-            "n_live_strategies": entry["n_live_strategies"],
-            "n_degenerate_strategies": entry["n_degenerate_strategies"],
-            "winner": entry["winner"],
-            "equity_curve": thin_curve(
-                entry["equity_curve"]["dates"], entry["equity_curve"]["values"]
-            ),
-            "family_sharpe": binned_distribution(entry["family_sharpe"]),
-        }
     write_json(
         RESULTS_DIR / "mirage.json",
         {
-            "by_cost": mirage,
+            "headline_window": headline,
+            "by_cost": {level: _mirage_block(entry) for level, entry in audits.items()},
+            "long_sample": {
+                level: _mirage_block(entry) for level, entry in long_sample.items()
+            },
             "benchmark_curve": thin_curve(
                 benchmark.index, np.cumprod(1.0 + benchmark.to_numpy())
             ),
@@ -174,18 +226,13 @@ def _write_artifacts(panel, sweep, audits, own, published, described) -> dict:
     write_json(
         RESULTS_DIR / "audit.json",
         {
-            "by_cost": {
-                level: {
-                    "round_trip_bps": entry["round_trip_bps"],
-                    "deflated": entry["deflated"],
-                    "pbo": entry["pbo"],
-                    "logit_histogram": entry["logit_histogram"],
-                    "degradation": entry["degradation"],
-                    "verdict": entry["verdict"],
-                }
-                for level, entry in audits.items()
+            "headline_window": headline,
+            "by_cost": {level: _audit_block(entry) for level, entry in audits.items()},
+            "long_sample": {
+                level: _audit_block(entry) for level, entry in long_sample.items()
             },
             "cost_sensitivity": cost_sensitivity(audits),
+            "track_record": track_record_summary(by_window),
         },
     )
 
