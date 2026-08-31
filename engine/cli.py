@@ -152,6 +152,8 @@ def _write_artifacts(panel, sweep, audits, own, published, described) -> dict:
     for level, entry in audits.items():
         mirage[level] = {
             "round_trip_bps": entry["round_trip_bps"],
+            "n_live_strategies": entry["n_live_strategies"],
+            "n_degenerate_strategies": entry["n_degenerate_strategies"],
             "winner": entry["winner"],
             "equity_curve": thin_curve(
                 entry["equity_curve"]["dates"], entry["equity_curve"]["values"]
