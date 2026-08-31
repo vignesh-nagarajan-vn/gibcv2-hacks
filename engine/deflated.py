@@ -129,6 +129,31 @@ def expected_max_sharpe(
     return _to_annual(sd * scale, periods)
 
 
+def null_sharpe_variance(n_obs: int, periods: int = ANNUALIZATION) -> float:
+    """Variance of an estimated Sharpe under the null of no skill.
+
+    The deflation benchmark needs the dispersion of Sharpe ratios across the
+    trials that were run. When those trials are in hand, as they are for a grid
+    search, the observed dispersion is the right input and the one to use. When
+    they are not, this is the substitute.
+
+    A strategy with no edge and roughly normal returns produces a Sharpe estimate
+    whose per-observation variance is about 1/n, so the annualized variance is
+    periods/n. In track record terms the standard deviation is one over the
+    square root of the number of years, which is a useful thing to carry around:
+    a decade of data pins a Sharpe to about a third of a point either way, and a
+    century pins it to a tenth.
+
+    This is used for the published factor control, where the relevant trial count
+    comes from the literature rather than from anything run here, so no
+    cross-section of trial Sharpes exists to measure. Stating the assumption is
+    the point. The alternative would be to invent a dispersion.
+    """
+    if n_obs < 2:
+        return float("nan")
+    return float(periods) / float(n_obs)
+
+
 def effective_trials(returns: np.ndarray) -> float:
     """Independent-trial count implied by the correlation structure of a family.
 
