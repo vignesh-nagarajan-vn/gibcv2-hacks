@@ -19,12 +19,14 @@ import time
 from datetime import date
 
 import numpy as np
+import pandas as pd
 
 from engine import __version__
 from engine.artifacts import (
     binned_distribution,
     check_budget,
     thin_curve,
+    thin_paired_curves,
     write_json,
 )
 from engine.audit import (
@@ -134,7 +136,11 @@ def _window_label(window_days: int) -> str:
     return f"{window_days / ANNUALIZATION:.0f}y"
 
 
-def _mirage_block(entry: dict) -> dict:
+def _mirage_block(entry: dict, benchmark_curve: pd.Series) -> dict:
+    """One window and cost level, with the benchmark on the same date grid."""
+    dates = entry["equity_curve"]["dates"]
+    aligned = benchmark_curve.reindex(dates).ffill().bfill()
+
     return {
         "round_trip_bps": entry["round_trip_bps"],
         "window_days": entry["window_days"],
@@ -144,8 +150,8 @@ def _mirage_block(entry: dict) -> dict:
         "n_live_strategies": entry["n_live_strategies"],
         "n_degenerate_strategies": entry["n_degenerate_strategies"],
         "winner": entry["winner"],
-        "equity_curve": thin_curve(
-            entry["equity_curve"]["dates"], entry["equity_curve"]["values"]
+        "equity_curve": thin_paired_curves(
+            dates, entry["equity_curve"]["values"], aligned.to_numpy()
         ),
         "family_sharpe": binned_distribution(entry["family_sharpe"]),
     }
@@ -168,6 +174,10 @@ def _write_artifacts(
     panel, sweep, audits, long_sample, by_window, own, published, described, headline
 ) -> dict:
     benchmark = panel.benchmark_returns.dropna()
+    # Compounded benchmark on the panel calendar, reindexed per window later.
+    benchmark_curve = pd.Series(
+        np.cumprod(1.0 + benchmark.to_numpy()), index=benchmark.index
+    )
 
     write_json(
         RESULTS_DIR / "meta.json",
@@ -212,13 +222,14 @@ def _write_artifacts(
         RESULTS_DIR / "mirage.json",
         {
             "headline_window": headline,
-            "by_cost": {level: _mirage_block(entry) for level, entry in audits.items()},
-            "long_sample": {
-                level: _mirage_block(entry) for level, entry in long_sample.items()
+            "by_cost": {
+                level: _mirage_block(entry, benchmark_curve)
+                for level, entry in audits.items()
             },
-            "benchmark_curve": thin_curve(
-                benchmark.index, np.cumprod(1.0 + benchmark.to_numpy())
-            ),
+            "long_sample": {
+                level: _mirage_block(entry, benchmark_curve)
+                for level, entry in long_sample.items()
+            },
             "benchmark_sharpe": round(float(sharpe(benchmark.to_numpy())), 4),
         },
     )

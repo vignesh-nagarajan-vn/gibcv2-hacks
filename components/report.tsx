@@ -114,7 +114,7 @@ export function Report() {
               label="Growth of one dollar, log scale"
               caption={`The winning rule against ${meta.benchmark.ticker} over the same window. Log scale, because a linear axis hides everything that happens early in a curve.`}
             >
-              <EquityCurve series={m.equity_curve} benchmark={mirage.benchmark_curve} />
+              <EquityCurve series={m.equity_curve} />
             </Figure>
           </div>
           <div className="space-y-6">

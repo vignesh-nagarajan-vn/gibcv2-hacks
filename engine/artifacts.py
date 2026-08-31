@@ -84,6 +84,46 @@ def thin_curve(dates: pd.DatetimeIndex, values: np.ndarray, points: int = CURVE_
     ]
 
 
+def thin_paired_curves(
+    dates: pd.DatetimeIndex,
+    strategy: np.ndarray,
+    benchmark: np.ndarray,
+    points: int = CURVE_POINTS,
+) -> list:
+    """Two curves on one date grid, thinned together and both rebased to 1.0.
+
+    Thinning the two series separately would put them on different dates, and a
+    chart that joins them by date would then drop almost every benchmark point.
+    Rebasing matters for the same reason: when the window starts partway through
+    the sample the benchmark has already compounded to several times its
+    starting value, and plotting that against a strategy starting at 1.0 on a log
+    axis makes the strategy look like a flat line at the bottom of the frame.
+    Both series start where the window starts.
+    """
+    strat = np.asarray(strategy, dtype=float)
+    bench = np.asarray(benchmark, dtype=float)
+    n = min(len(dates), strat.size, bench.size)
+    if n == 0:
+        return []
+
+    dates, strat, bench = dates[:n], strat[:n], bench[:n]
+    strat = strat / strat[0] if strat[0] != 0 else strat
+    bench = bench / bench[0] if bench[0] != 0 else bench
+
+    index = np.arange(n) if n <= points else np.unique(
+        np.linspace(0, n - 1, points).round().astype(int)
+    )
+
+    return [
+        [
+            pd.Timestamp(dates[i]).date().isoformat(),
+            round(float(strat[i]), 5),
+            round(float(bench[i]), 5),
+        ]
+        for i in index
+    ]
+
+
 def binned_distribution(values: np.ndarray, bins: int = 40) -> dict:
     """A histogram sized for a chart, with the summary statistics alongside."""
     arr = np.asarray(values, dtype=float)

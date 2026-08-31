@@ -22,7 +22,13 @@ import {
   YAxis,
 } from "recharts";
 
-import type { CurvePoint, Degradation, Histogram, TrackRecordRow } from "@/lib/data";
+import type {
+  CurvePoint,
+  Degradation,
+  Histogram,
+  PairedCurvePoint,
+  TrackRecordRow,
+} from "@/lib/data";
 
 const AXIS = { stroke: "#4a5162", fontSize: 11, fontFamily: "var(--font-mono)" };
 const GRID = "#1f242f";
@@ -43,24 +49,23 @@ const tooltipStyle = {
 
 export function EquityCurve({
   series,
-  benchmark,
+  showBenchmark = true,
   height = 320,
   logScale = true,
 }: {
-  series: CurvePoint[];
-  benchmark?: CurvePoint[];
+  series: PairedCurvePoint[] | CurvePoint[];
+  showBenchmark?: boolean;
   height?: number;
   logScale?: boolean;
 }) {
-  const byDate = new Map<string, { date: string; strategy: number; bench?: number }>();
-  for (const [date, value] of series) byDate.set(date, { date, strategy: value });
-  if (benchmark) {
-    for (const [date, value] of benchmark) {
-      const row = byDate.get(date);
-      if (row) row.bench = value;
-    }
-  }
-  const data = Array.from(byDate.values());
+  // Both series arrive on one date grid, already rebased, so there is nothing to
+  // join here and nothing that can silently fail to line up.
+  const data = (series as PairedCurvePoint[]).map((point) => ({
+    date: point[0],
+    strategy: point[1],
+    bench: point.length > 2 ? point[2] : undefined,
+  }));
+  const hasBenchmark = showBenchmark && data.some((row) => row.bench !== undefined);
 
   return (
     <ResponsiveContainer width="100%" height={height}>
@@ -90,7 +95,7 @@ export function EquityCurve({
             name === "strategy" ? "Strategy" : "Benchmark",
           ]}
         />
-        {benchmark ? (
+        {hasBenchmark ? (
           <Line
             type="monotone"
             dataKey="bench"

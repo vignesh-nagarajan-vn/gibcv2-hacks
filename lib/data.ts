@@ -9,6 +9,9 @@ import controlJson from "../results/control.json";
 import metaJson from "../results/meta.json";
 import mirageJson from "../results/mirage.json";
 
+// [date, strategy, benchmark]. The two series share a date grid and are both
+// rebased to 1.0 at the start of the window they cover.
+export type PairedCurvePoint = [string, number, number];
 export type CurvePoint = [string, number];
 
 export interface Performance {
@@ -141,7 +144,7 @@ export interface MirageBlock {
     peak_participation: number;
     capacity_binding_days: number;
   };
-  equity_curve: CurvePoint[];
+  equity_curve: PairedCurvePoint[];
   family_sharpe: Histogram;
 }
 
@@ -149,7 +152,6 @@ export const mirage = mirageJson as unknown as {
   headline_window: string;
   by_cost: Record<string, MirageBlock>;
   long_sample: Record<string, MirageBlock>;
-  benchmark_curve: CurvePoint[];
   benchmark_sharpe: number;
 };
 
