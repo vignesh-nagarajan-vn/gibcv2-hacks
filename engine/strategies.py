@@ -11,6 +11,11 @@ resulting position over day t+1. The one-day shift is applied centrally in
 `build_weights`, so no individual rule can leak a same-day close into its own
 return.
 
+Every rule is also made dollar neutral, in `_neutralize`, for reasons set out at
+length there. The short version: a family that carries net market exposure is a
+search over how much beta to hold, and beta is a real edge, so the audit passes
+the family for the wrong reason and measures nothing about the parameter search.
+
 Rolling statistics are computed once per distinct window and shared across the
 grid. Without that the enumeration would recompute the same 200-day average a few
 hundred times.
@@ -140,9 +145,16 @@ class FeatureCache:
 
     @property
     def tradable(self) -> np.ndarray:
-        """True where a position can be held, meaning tomorrow's return exists."""
+        """True where a position decided yesterday earns a real return today.
+
+        That is exactly where the return itself exists, since a return over day t
+        is built from the prices at t-1 and t. Both are in the past relative to
+        the day the position pays off, so nothing here looks forward. An earlier
+        version asked whether tomorrow's return existed, which answered the same
+        question in practice but did it by peeking.
+        """
         if self._tradable is None:
-            self._tradable = self.returns.shift(-1).notna().to_numpy()
+            self._tradable = self.returns.notna().to_numpy()
         return self._tradable
 
     def sma(self, w: int) -> np.ndarray:
@@ -192,6 +204,40 @@ def _normalize(raw: np.ndarray) -> np.ndarray:
     """Scale to unit gross exposure. A day with no signal sits flat."""
     gross = np.abs(raw).sum(axis=1, keepdims=True)
     return np.divide(raw, gross, out=np.zeros_like(raw), where=gross > 0)
+
+
+def _neutralize(raw: np.ndarray, active: np.ndarray) -> np.ndarray:
+    """Subtract the cross-sectional mean so the book holds no net market exposure.
+
+    This is the single most important line in the module, and it is here for a
+    measurement reason rather than a portfolio construction one.
+
+    A grid of long-biased rules on a rising market is not a search over noise. It
+    is a search over how much beta to hold, and beta paid over this sample. Run
+    that family through the audit and it passes, because the winner really does
+    have a persistent edge: it is long equities. The overfitting statistics come
+    back clean and say nothing at all about the parameter search, which is the
+    thing we set out to measure. An earlier version of this file omitted the
+    demeaning and produced exactly that: a winning Sharpe of 0.79, a deflated
+    Sharpe of 0.96, and an effective trial count of 3.4 out of 2202, which is the
+    correlation matrix reporting that all two thousand rules were one bet wearing
+    different hats.
+
+    Demeaning each day across the names that can actually be traded removes the
+    common component. What is left is the rule's cross-sectional opinion, which is
+    what the search is nominally about. No estimation is involved, so nothing here
+    can leak: the demeaning uses only the same day's own signals.
+
+    A day on which every name gives the same signal nets to flat. That is the
+    correct answer for a neutral book, not a defect.
+    """
+    counts = active.sum(axis=1, keepdims=True)
+    masked = np.where(active, raw, 0.0)
+    mean = np.divide(
+        masked.sum(axis=1, keepdims=True), counts, out=np.zeros_like(counts, dtype=float),
+        where=counts > 0,
+    )
+    return np.where(active, masked - mean, 0.0)
 
 
 def _breakout_state(prices: np.ndarray, upper: np.ndarray, lower: np.ndarray) -> np.ndarray:
@@ -262,14 +308,20 @@ def build_weights(spec: StrategySpec, features: FeatureCache) -> np.ndarray:
     else:
         raise ValueError(f"unknown family {spec.family!r}")
 
+    # A name with no price gives no signal.
     raw = np.where(np.isnan(prices), 0.0, raw)
-    weights = _normalize(_hold_between_rebalances(raw, int(params["rebalance"])))
+    held = _hold_between_rebalances(raw, int(params["rebalance"]))
 
-    # Signals are formed on the close of day t. The position is held over day
+    # Signals are formed on the close of day t and the position is held over day
     # t+1. Every rule inherits the shift here, so none of them can leak.
-    lagged = np.zeros_like(weights)
-    lagged[1:] = weights[:-1]
-    return np.where(features.tradable, lagged, 0.0)
+    lagged = np.zeros_like(held)
+    lagged[1:] = held[:-1]
+
+    # Order matters below. Masking to the tradable set has to happen before the
+    # demeaning, and the demeaning before the scaling, or a name dropping out
+    # between rebalances leaves the book with residual net exposure.
+    active = features.tradable
+    return _normalize(_neutralize(np.where(active, lagged, 0.0), active))
 
 
 def iter_weights(specs: list, features: FeatureCache) -> Iterator[np.ndarray]:
