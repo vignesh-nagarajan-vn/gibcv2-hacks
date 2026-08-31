@@ -122,10 +122,75 @@ def test_committed_artifacts_are_within_budget():
 def test_every_cost_level_appears_in_every_artifact():
     meta = _load("meta.json")
     levels = [f"{b:.0f}" for b in meta["cost_model"]["grid_bps"]]
+    mirage, audit, control = _load("mirage.json"), _load("audit.json"), _load("control.json")
 
-    assert set(_load("mirage.json")["by_cost"]) == set(levels)
-    assert set(_load("audit.json")["by_cost"]) == set(levels)
-    assert set(_load("control.json")["own"]["by_cost"]) == set(levels)
+    assert set(mirage["by_cost"]) == set(levels)
+    assert set(mirage["long_sample"]) == set(levels)
+    assert set(audit["by_cost"]) == set(levels)
+    assert set(audit["long_sample"]) == set(levels)
+    assert set(control["own"]["by_cost"]) == set(levels)
+
+
+@needs_artifacts
+def test_the_headline_window_is_one_of_the_declared_windows():
+    meta = _load("meta.json")
+    headline = meta["search"]["windows"]["headline"]
+
+    assert headline in meta["search"]["windows"]["labels"]
+    assert _load("mirage.json")["headline_window"] == headline
+    assert _load("audit.json")["headline_window"] == headline
+
+
+@needs_artifacts
+def test_track_record_covers_every_window_and_cost():
+    meta = _load("meta.json")
+    rows = _load("audit.json")["track_record"]["rows"]
+    levels = {float(b) for b in meta["cost_model"]["grid_bps"]}
+    windows = set(meta["search"]["windows"]["labels"])
+
+    assert {r["window"] for r in rows} == windows
+    assert {r["round_trip_bps"] for r in rows} == levels
+    assert len(rows) == len(windows) * len(levels)
+
+
+@needs_artifacts
+def test_a_shorter_window_lets_the_search_find_more():
+    """The finding the track record sweep exists to show.
+
+    A fixed search has proportionally more freedom on less data, so both the
+    apparent edge and the bar it must clear rise as the window shrinks.
+    """
+    rows = [r for r in _load("audit.json")["track_record"]["rows"] if r["round_trip_bps"] == 0.0]
+    rows.sort(key=lambda r: r["window_days"])
+
+    assert rows[0]["observed_sharpe"] > rows[-1]["observed_sharpe"]
+    assert rows[0]["benchmark_sharpe"] > rows[-1]["benchmark_sharpe"]
+
+
+@needs_artifacts
+def test_the_headline_window_actually_looks_like_a_mirage():
+    """Section two has to be seductive or the demo makes no point.
+
+    A high observed Sharpe paired with a deflated Sharpe on the floor is the
+    whole claim. If this test fails, the page is showing a flat line and telling
+    the reader it is dangerous.
+    """
+    mirage = _load("mirage.json")
+    audit = _load("audit.json")
+    level = "10"
+
+    assert mirage["by_cost"][level]["winner"]["performance"]["sharpe"] > 0.8
+    assert audit["by_cost"][level]["deflated"]["deflated_sharpe"] < 0.5
+    assert audit["by_cost"][level]["verdict"]["tier"] in {"discard", "unproven"}
+
+
+@needs_artifacts
+def test_the_published_control_survives_the_same_machinery():
+    published = _load("control.json")["published"]
+
+    assert published["verdict"]["tier"] == "supported"
+    assert published["deflated"]["deflated_sharpe"] > 0.95
+    assert published["deflated"]["n_trials"] == 316
 
 
 @needs_artifacts
@@ -137,7 +202,17 @@ def test_the_keys_the_app_indexes_into_are_present():
     level = next(iter(mirage["by_cost"]))
 
     entry = mirage["by_cost"][level]
-    assert {"round_trip_bps", "n_live_strategies", "winner", "equity_curve", "family_sharpe"} <= set(entry)
+    assert {
+        "round_trip_bps",
+        "n_live_strategies",
+        "winner",
+        "equity_curve",
+        "family_sharpe",
+        "window_days",
+        "window_years",
+        "window_start",
+        "window_end",
+    } <= set(entry)
     assert {"index", "name", "spec", "performance", "capacity_ceiling_usd"} <= set(entry["winner"])
 
     audited = audit["by_cost"][level]
@@ -145,6 +220,9 @@ def test_the_keys_the_app_indexes_into_are_present():
     assert {"tier", "headline", "reasons"} <= set(audited["verdict"])
     assert {"round_trip_bps", "observed_sharpe", "deflated_sharpe", "pbo", "tier"} <= set(
         audit["cost_sensitivity"]
+    )
+    assert {"window", "window_years", "observed_sharpe", "deflated_sharpe", "pbo"} <= set(
+        audit["track_record"]["rows"][0]
     )
 
     assert {"own", "published"} <= set(control)
@@ -155,7 +233,8 @@ def test_the_keys_the_app_indexes_into_are_present():
 @needs_artifacts
 def test_reported_probabilities_are_probabilities():
     audit = _load("audit.json")
-    for entry in audit["by_cost"].values():
+    entries = list(audit["by_cost"].values()) + list(audit["long_sample"].values())
+    for entry in entries:
         assert 0.0 <= entry["deflated"]["deflated_sharpe"] <= 1.0
         assert 0.0 <= entry["deflated"]["probabilistic_sharpe"] <= 1.0
         assert 0.0 <= entry["pbo"]["pbo"] <= 1.0
