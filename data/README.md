@@ -32,18 +32,23 @@ and treats a missing day as a genuine gap, never as a carried forward price.
   - `https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp/F-F_Research_Data_Factors_daily_CSV.zip`
   - `https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp/F-F_Momentum_Factor_daily_CSV.zip`
 - **Retrieved:** 2026-08-30
-- **Coverage:** trimmed on download to 2004-07-01 to 2026-06-30, 5,534 rows each.
-  The published series start in 1926. Only the window overlapping the price panel
-  is kept. Note the factor files end two months before the price panel does,
+- **Coverage:** full published history. The three factor file runs 1926-07-01 to
+  2026-06-30 with 26,274 rows, and the momentum file runs 1926-11-03 to
+  2026-06-30 with 26,173 rows. Both end two months before the price panel does,
   because French publishes on a lag.
 - **Contents:** `mkt_rf, smb, hml, rf` and `mom`, converted from the published
   percent units to decimal daily returns.
 - **Terms:** The library is published for public research use and is freely
   downloadable. Attribution to Kenneth R. French is expected and given here.
 
-These factors are not used to build any strategy. They are an outside reference
-for the momentum control, so that the one result which survives the audit does
-not rest solely on a return series we assembled ourselves.
+These factors are not used to build any strategy. The momentum series does two
+jobs. It corroborates our own momentum implementation, by correlation over the
+overlapping window, which tests that the implementation is measuring the
+documented effect rather than something else wearing its name. And its full
+century of history is scored directly as the control, because the finding this
+project ends on is that the same factor passes the audit over 99 years and fails
+it over the most recent 21. That comparison needs the whole series, which is why
+these files are kept at full length rather than trimmed to the price window.
 
 ## A note on Stooq
 

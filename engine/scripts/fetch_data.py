@@ -38,9 +38,10 @@ from engine.config import BENCHMARK, DATA_DIR, PRICES_DIR
 
 START = date(2005, 1, 1)
 
-# French history reaches back to 1926. Only the window that overlaps the price
-# panel is kept, which trims about 1.9 MB of unused rows out of the repo.
-FRENCH_START = "2004-07-01"
+# The French files are kept at their full published length rather than trimmed to
+# the price window. The momentum control is scored over the whole history, since
+# how a factor behaves across a century is the question the control is asking.
+FRENCH_START = "1900-01-01"
 
 UNIVERSE = [
     "AAPL", "ABT", "ADBE", "AMGN", "AXP", "BA", "BAC", "BMY", "C", "CAT",
