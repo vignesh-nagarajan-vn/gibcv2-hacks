@@ -10,6 +10,10 @@ export default function Page() {
     <main>
       <header className="mx-auto max-w-5xl px-6 pb-16 pt-24 sm:pb-24 sm:pt-32">
         <p className="tabular text-xs uppercase tracking-[0.24em] text-signal">Mirage</p>
+        <div
+          aria-hidden
+          className="mt-6 h-px w-24 bg-gradient-to-r from-signal to-transparent"
+        />
         <h1 className="mt-6 max-w-3xl text-4xl font-semibold leading-[1.1] tracking-tight text-mist-100 sm:text-6xl">
           A backtest overfitting auditor.
         </h1>
@@ -24,6 +28,26 @@ export default function Page() {
           without comment, and then the same result put through deflation and cross-validation.
           A documented factor goes through the identical machinery as a control.
         </p>
+
+        <nav className="mt-12 flex flex-wrap gap-x-8 gap-y-3 border-t border-ink-700/60 pt-6">
+          {[
+            ["setup", "The setup"],
+            ["mirage", "The mirage"],
+            ["audit", "The audit"],
+            ["control", "The control"],
+          ].map(([id, label], i) => (
+            <a
+              key={id}
+              href={`#${id}`}
+              className="group flex items-baseline gap-2 text-sm text-mist-500 transition-colors hover:text-mist-100"
+            >
+              <span className="tabular text-xs text-signal">{`0${i + 1}`}</span>
+              <span className="border-b border-transparent group-hover:border-mist-700">
+                {label}
+              </span>
+            </a>
+          ))}
+        </nav>
       </header>
 
       <Section

@@ -18,7 +18,7 @@ export function Section({
   children: ReactNode;
 }) {
   return (
-    <section id={id} className="border-t border-ink-700/60 py-20 sm:py-28">
+    <section id={id} className="scroll-mt-20 border-t border-ink-700/60 py-20 sm:py-28">
       <div className="mx-auto max-w-5xl px-6">
         <p className="tabular text-xs uppercase tracking-[0.2em] text-signal">{eyebrow}</p>
         <h2 className="mt-4 text-3xl font-semibold tracking-tight text-mist-100 sm:text-4xl">
@@ -43,7 +43,7 @@ export function Figure({
   children: ReactNode;
 }) {
   return (
-    <figure className="rounded-lg border border-ink-700/60 bg-ink-900/60 p-5">
+    <figure className="rounded-lg border border-ink-700/60 bg-ink-900/60 p-5 transition-colors hover:border-ink-600">
       <figcaption className="mb-5 text-xs uppercase tracking-[0.16em] text-mist-500">
         {label}
       </figcaption>
