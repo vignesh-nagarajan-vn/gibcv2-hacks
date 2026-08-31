@@ -1,9 +1,10 @@
 import { Report } from "@/components/report";
 import { Figure, Section, Stat, StatRow, Table, fmt } from "@/components/primitives";
-import { meta } from "@/lib/data";
+import { audit, meta } from "@/lib/data";
 
 export default function Page() {
   const years = meta.data.n_days / meta.annualization;
+  const partitions = Object.values(audit.by_cost)[0].pbo.n_partitions;
 
   return (
     <main>
@@ -54,7 +55,7 @@ export default function Page() {
           <Stat label="Trials swept" value={fmt.int(meta.search.n_trials)} note={meta.search.families.join(", ")} />
           <Stat
             label="CSCV splits"
-            value={fmt.int(12870)}
+            value={fmt.int(partitions)}
             note={`all ways to halve ${meta.validation.cscv_blocks} blocks`}
           />
         </StatRow>
