@@ -148,7 +148,7 @@ export default function Page() {
               test.
             </p>
             <p>
-              AI coding assistance was used to build this. It wrote the Python engine, the
+              AI coding assistance (Claude Code) was used to build this. It wrote the Python engine, the
               statistical implementations, the tests, and this page, working from a specification
               and under review. The methodology follows published work by Bailey and Lopez de
               Prado, cited in the source.
