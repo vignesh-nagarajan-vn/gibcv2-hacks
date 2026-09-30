@@ -33,7 +33,7 @@ CSCV_BLOCKS = 16
 # Track record lengths the mirage is audited over, in trading days. Zero means
 # the whole sample. Overfitting is a function of how much data the search had to
 # fit, so the same completed sweep is scored on each of these windows and the
-# headline is drawn from the three year one, which is a common backtest length.
+# headline is drawn from the window named by HEADLINE_WINDOW below.
 TRACK_RECORD_WINDOWS = (504, 756, 1260, 2520, 0)
 
 # Two years. Chosen after seeing all five windows, and the reason is worth
