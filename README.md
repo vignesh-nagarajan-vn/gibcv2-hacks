@@ -1,7 +1,5 @@
 # Mirage
 
-Built for [Global Innovation Build Challenge V2](https://gibc-v2.devpost.com/), Track 02: Applied (Finance).
-
 A backtest overfitting auditor. Give it a strategy and the search that produced it, and it
 estimates the probability that the result is a false discovery rather than a real edge. It is a
 tool for judging strategies, not another strategy.
